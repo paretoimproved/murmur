@@ -295,6 +295,14 @@ def record_session():
                 if (SILENCE_HANG > 0 and speech and last_voice
                         and (now - last_voice) >= SILENCE_HANG):
                     break
+        # The callback buffers audio the loop hadn't pulled yet, and a final
+        # flush lands as the stream closes. Drain it so the end of your sentence
+        # survives when you toggle dictation off (otherwise the tail is dropped).
+        while not q.empty():
+            try:
+                chunks.append(q.get_nowait())
+            except queue.Empty:
+                break
     except Exception as e:
         log(f"audio capture failed: {e}")
         notify("…audio capture error (is an input device available?)", "vd-state")
