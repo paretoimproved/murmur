@@ -69,6 +69,7 @@ YDOTOOL_SOCKET = os.environ.get("YDOTOOL_SOCKET", "/run/ydotoold.socket")
 
 MODEL_NAME = cfg("model", "large-v3-turbo")
 COMPUTE = cfg("compute", "float16")
+DEVICE = cfg("device", "auto")   # auto | cuda | cpu
 LANGUAGE = cfg("lang", "en")
 BEAM = cfg("beam", 1, int)
 
@@ -361,10 +362,16 @@ class Server(socketserver.ThreadingUnixStreamServer):
 
 def main():
     global model
-    log(f"loading {MODEL_NAME} ({COMPUTE}) on cuda…")
     t0 = time.monotonic()
-    model = WhisperModel(MODEL_NAME, device="cuda", compute_type=COMPUTE)
-    # warm the CUDA kernels so the first real dictation is fast
+    try:
+        log(f"loading {MODEL_NAME} ({COMPUTE}) on {DEVICE}…")
+        model = WhisperModel(MODEL_NAME, device=DEVICE, compute_type=COMPUTE)
+    except Exception as e:
+        # No CUDA / wrong compute for this device: fall back to plain CPU so the
+        # daemon always starts (a crashed daemon = no socket = "not reachable").
+        log(f"load on '{DEVICE}' ({COMPUTE}) failed: {e}; falling back to CPU int8")
+        model = WhisperModel(MODEL_NAME, device="cpu", compute_type="int8")
+    # warm the model so the first real dictation is fast
     model.transcribe(np.zeros(RATE, dtype=np.float32), language=LANGUAGE)
     log(f"model ready in {time.monotonic()-t0:.1f}s")
     if CLEANUP:

@@ -5,7 +5,8 @@
 
 # --- transcription ---
 model = "large-v3-turbo"    # "large-v3" = max accuracy; "small.en"/"distil-large-v3" = faster / CPU-friendly
-compute = "float16"         # use "int8" on CPU
+compute = "float16"         # "int8" on CPU
+device = "auto"             # auto | cuda | cpu  (auto picks CUDA if present, else CPU; falls back to CPU on error)
 lang = "en"
 beam = 1                    # 5 is marginally more accurate, slower
 
