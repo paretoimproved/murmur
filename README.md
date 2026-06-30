@@ -41,20 +41,15 @@ cd murmur
 ./setup
 ```
 
-`./setup` detects your environment (distro, GPU vs CPU, PipeWire, ydotool, Ollama), asks a few questions, writes `~/.config/murmur/config.toml`, runs `uv sync`, and installs + starts a user systemd service. It then prints the exact commands for the one step it can't safely do for you (the root `ydotoold` service) and runs a health check. Pass `--defaults` for a non-interactive install with sensible choices.
+`./setup` detects your environment (distro and package manager, GPU vs CPU, audio, ydotool, Ollama, desktop) and does the rest: it asks a few questions, writes `~/.config/murmur/config.toml`, syncs Python deps (with the CUDA extra only on NVIDIA), and installs + starts the user service. Then, behind a **single sudo prompt**, it installs any missing system packages (`portaudio`, `ydotool`, `libnotify`) via your package manager and sets up the root `ydotoold` service with the socket owned by you. Finally it pulls the Ollama cleanup model, binds a `Super+\` shortcut to dictation on GNOME / Sway / Hyprland, and runs the health check.
 
-Then bind `dictation-toggle` to a keyboard shortcut (KDE: System Settings -> Shortcuts -> Custom Shortcut -> Command) and you're dictating.
+That's the whole install on the major distro + desktop combos: clone, `./setup`, approve one sudo. Pass `--defaults` for a non-interactive run that skips the privileged steps and prints them instead.
+
+A few honest edges: `uv` and Ollama are prerequisites you install yourself (Murmur never pipes a remote script to your shell); `ydotool` isn't packaged on every distro and may need a source build; and **KDE** needs a one-time manual shortcut bind (System Settings -> Shortcuts -> Custom Shortcut -> Command -> the `dictation-toggle` path), because its CLI binding is unreliable and wants a re-login.
 
 **Check your setup any time** with `./doctor`: it prints a pass/fail for every dependency and the exact fix for anything missing.
 
 **Unusual distro or a setup the wizard doesn't cover?** See [SETUP_WITH_AI.md](SETUP_WITH_AI.md) to hand the install to a coding agent that adapts to your exact machine.
-
-You also need `ydotoold` running with a socket your user can reach. The simplest setup is a root service with the socket owned by your user:
-
-```ini
-# /etc/systemd/system/ydotoold.service (drop-in: chown the socket to your uid)
-ExecStart=/usr/bin/ydotoold --socket-path=/run/ydotoold.socket --socket-own=<uid>:<gid>
-```
 
 ## Usage
 

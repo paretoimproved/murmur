@@ -1,52 +1,64 @@
 #!/usr/bin/env bash
-# Murmur interactive setup: detect the environment, ask a few questions,
-# write config, sync deps, install the service, and tell you the exact
-# remaining (root) steps. Re-runnable. Use --defaults to skip the questions.
+# Murmur setup: detect the environment, ask a few questions, write config, sync
+# deps, install the service, and (with one sudo prompt) install missing system
+# packages + the ydotoold service + bind a keyboard shortcut. Re-runnable.
+#   ./setup              interactive
+#   ./setup --defaults   non-interactive, sensible choices, skips privileged steps
+# It never pipes a remote script to a shell; system packages come from your
+# distro's package manager only. uv and ollama, if missing, are left to you.
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/murmur"
 UNIT_DIR="$HOME/.config/systemd/user"
+UID_N="$(id -u)"; GID_N="$(id -g)"
 ASSUME_DEFAULTS=0
 [ "${1:-}" = "--defaults" ] && ASSUME_DEFAULTS=1
 [ -t 0 ] || ASSUME_DEFAULTS=1   # no TTY -> non-interactive
 
 c_ok="\033[32m"; c_warn="\033[33m"; c_err="\033[31m"; c_dim="\033[2m"; c_off="\033[0m"
 say() { printf "%b\n" "$*"; }
-ask() { # ask "prompt" "default" -> echoes answer
+have() { command -v "$1" >/dev/null 2>&1; }
+ask() {
   local prompt="$1" def="$2" ans
   if [ "$ASSUME_DEFAULTS" = 1 ]; then echo "$def"; return; fi
   read -rp "$prompt [$def]: " ans || true
   echo "${ans:-$def}"
 }
 
-say "${c_dim}Murmur setup  (dir: $DIR)${c_off}"
-say ""
+say "${c_dim}Murmur setup  (dir: $DIR)${c_off}"; say ""
 
 # ---- detect ---------------------------------------------------------------
-have() { command -v "$1" >/dev/null 2>&1; }
 DISTRO="$( . /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-unknown}" )"
-SESSION="${XDG_SESSION_TYPE:-unknown} / ${XDG_CURRENT_DESKTOP:-unknown}"
+DESKTOP="${XDG_CURRENT_DESKTOP:-unknown}"
+SESSION="${XDG_SESSION_TYPE:-unknown} / $DESKTOP"
 if have nvidia-smi; then GPU="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)"; HAS_GPU=1
 else GPU="none detected"; HAS_GPU=0; fi
 DEFAULT_MODEL=$([ "$HAS_GPU" = 1 ] && echo "large-v3-turbo" || echo "small.en")
 DEFAULT_COMPUTE=$([ "$HAS_GPU" = 1 ] && echo "float16" || echo "int8")
 
+PM=""
+if   have dnf;     then PM=dnf
+elif have apt-get; then PM=apt
+elif have pacman;  then PM=pacman
+elif have zypper;  then PM=zypper
+fi
+
+has_portaudio() { ldconfig -p 2>/dev/null | grep -qi portaudio; }
+
 say "Detected:"
-say "  distro:   $DISTRO"
+say "  distro:   $DISTRO  (pkg manager: ${PM:-unknown})"
 say "  session:  $SESSION"
 say "  gpu:      $GPU"
-for t in uv ydotool ollama; do
+for t in uv ydotool ollama notify-send; do
   if have "$t"; then say "  ${c_ok}\xe2\x9c\x93${c_off} $t"; else say "  ${c_warn}\xe2\x9c\x97${c_off} $t (missing)"; fi
 done
-if ldconfig -p 2>/dev/null | grep -qi portaudio; then
-  say "  ${c_ok}\xe2\x9c\x93${c_off} portaudio (audio backend)"
-else
-  say "  ${c_warn}\xe2\x9c\x97${c_off} portaudio (install your distro's portaudio / libportaudio2)"
-fi
+if has_portaudio; then say "  ${c_ok}\xe2\x9c\x93${c_off} portaudio"; else say "  ${c_warn}\xe2\x9c\x97${c_off} portaudio (missing)"; fi
 say ""
 
-have uv || { say "${c_err}'uv' is required.${c_off} Install: https://docs.astral.sh/uv/  then re-run ./setup"; exit 1; }
+have uv || { say "${c_err}'uv' is required and not installed.${c_off}"
+  say "Install it from your package manager or https://docs.astral.sh/uv/ (no curl-to-shell here), then re-run ./setup."
+  exit 1; }
 
 # ---- questions ------------------------------------------------------------
 MODEL="$(ask "Whisper model" "$DEFAULT_MODEL")"
@@ -56,6 +68,30 @@ CLEANUP_MODEL="llama3.1:8b"
 [ "$CLEANUP_ANS" = "yes" ] && CLEANUP_MODEL="$(ask "Cleanup model (Ollama tag)" "$CLEANUP_MODEL")"
 AUTOSTART="$(ask "Start Murmur now and on login? (yes/no)" "yes")"
 CLEANUP_BOOL=$([ "$CLEANUP_ANS" = "yes" ] && echo true || echo false)
+
+# Which system packages are missing (mapped to this distro's names)?
+pkg_for() {
+  case "$1:$PM" in
+    portaudio:apt|portaudio:zypper) echo libportaudio2 ;;
+    portaudio:*) echo portaudio ;;
+    libnotify:apt) echo libnotify-bin ;;
+    libnotify:zypper) echo libnotify-tools ;;
+    libnotify:*) echo libnotify ;;
+    ydotool:*) echo ydotool ;;
+  esac
+}
+MISSING=""
+has_portaudio   || MISSING="$MISSING $(pkg_for portaudio)"
+have ydotool    || MISSING="$MISSING $(pkg_for ydotool)"
+have notify-send|| MISSING="$MISSING $(pkg_for libnotify)"
+MISSING="$(echo "$MISSING" | xargs || true)"
+
+DO_PRIV="no"
+if [ "$ASSUME_DEFAULTS" = 0 ]; then
+  PROMPT="Set up the ydotoold service"
+  [ -n "$MISSING" ] && PROMPT="Install missing packages ($MISSING) and set up ydotoold"
+  DO_PRIV="$(ask "$PROMPT now? (one sudo prompt) (yes/no)" "yes")"
+fi
 
 # ---- write config ---------------------------------------------------------
 mkdir -p "$CONFIG_DIR"
@@ -73,7 +109,7 @@ fi
 [ -f "$CONFIG_DIR/corrections.txt" ] || cp "$DIR/corrections.txt.example" "$CONFIG_DIR/corrections.txt"
 say "${c_dim}edit your terms in $CONFIG_DIR/vocab.txt and corrections.txt${c_off}"
 
-# ---- deps + service --------------------------------------------------------
+# ---- python deps + user service -------------------------------------------
 say ""
 if [ "$HAS_GPU" = 1 ]; then
   say "Syncing Python deps with NVIDIA GPU support (uv sync --extra gpu)..."
@@ -82,37 +118,119 @@ else
   say "Syncing Python deps (uv sync, CPU)..."
   ( cd "$DIR" && uv sync )
 fi
-
 mkdir -p "$UNIT_DIR"
 for u in murmur.service murmur-gamewatch.service; do
   sed "s#__MURMUR_DIR__#$DIR#g" "$DIR/systemd/$u" > "$UNIT_DIR/$u"
 done
 systemctl --user daemon-reload
 if [ "$AUTOSTART" = "yes" ]; then
-  systemctl --user enable --now murmur.service
-  say "${c_ok}murmur.service enabled and started.${c_off}"
+  systemctl --user enable --now murmur.service && say "${c_ok}murmur.service enabled and started.${c_off}"
 else
-  say "${c_dim}service installed but not started. Start with: systemctl --user start murmur.service${c_off}"
+  say "${c_dim}service installed but not started (start: systemctl --user start murmur.service)${c_off}"
 fi
 
-# ---- remaining root steps --------------------------------------------------
-UID_N="$(id -u)"; GID_N="$(id -g)"
+# ---- privileged: packages + ydotoold (one sudo prompt) --------------------
+pkg_install() {
+  case "$PM" in
+    dnf)    sudo dnf install -y "$@" ;;
+    apt)    sudo apt-get update -qq && sudo apt-get install -y "$@" ;;
+    pacman) sudo pacman -S --noconfirm --needed "$@" ;;
+    zypper) sudo zypper --non-interactive install "$@" ;;
+    *) return 1 ;;
+  esac
+}
 say ""
-say "${c_warn}Remaining manual step (text injection needs ydotoold running):${c_off}"
-say "  sudo tee /etc/systemd/system/ydotoold.service >/dev/null <<EOF"
-say "  [Unit]"
-say "  Description=ydotool daemon"
-say "  [Service]"
-say "  ExecStart=/usr/bin/ydotoold --socket-path=/run/ydotoold.socket --socket-own=$UID_N:$GID_N"
-say "  [Install]"
-say "  WantedBy=multi-user.target"
-say "  EOF"
-say "  sudo systemctl enable --now ydotoold.service"
+if [ "$DO_PRIV" = "yes" ] && sudo -v; then
+  if [ -n "$MISSING" ]; then
+    if [ -n "$PM" ]; then
+      say "Installing system packages: $MISSING"
+      pkg_install $MISSING && say "${c_ok}packages installed${c_off}" \
+        || say "${c_warn}some packages failed (ydotool isn't packaged on every distro; see README to build it)${c_off}"
+    else
+      say "${c_warn}unknown package manager; install manually: $MISSING${c_off}"
+    fi
+  fi
+  YB="$(command -v ydotoold || echo /usr/bin/ydotoold)"
+  sudo tee /etc/systemd/system/ydotoold.service >/dev/null <<UNIT
+[Unit]
+Description=ydotool daemon (uinput) for Murmur
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=$YB --socket-path=/run/ydotoold.socket --socket-own=$UID_N:$GID_N
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now ydotoold.service \
+    && say "${c_ok}ydotoold service installed and started.${c_off}" \
+    || say "${c_warn}ydotoold failed to start; run ./doctor for details.${c_off}"
+else
+  [ "$DO_PRIV" = "yes" ] && say "${c_warn}sudo unavailable; do these by hand:${c_off}" || say "${c_warn}Manual steps (privileged, skipped):${c_off}"
+  [ -n "$MISSING" ] && say "  install packages: $MISSING"
+  say "  sudo tee /etc/systemd/system/ydotoold.service >/dev/null <<EOF"
+  say "  [Unit]"
+  say "  Description=ydotool daemon (uinput) for Murmur"
+  say "  [Service]"
+  say "  ExecStart=\$(command -v ydotoold) --socket-path=/run/ydotoold.socket --socket-own=$UID_N:$GID_N"
+  say "  [Install]"
+  say "  WantedBy=multi-user.target"
+  say "  EOF"
+  say "  sudo systemctl enable --now ydotoold.service"
+fi
+
+# ---- pull cleanup model ----------------------------------------------------
+if [ "$CLEANUP_ANS" = "yes" ] && have ollama; then
+  if ! ollama list 2>/dev/null | grep -q "${CLEANUP_MODEL%%:*}"; then
+    say ""; say "Pulling cleanup model $CLEANUP_MODEL (can be a few GB)..."
+    ollama pull "$CLEANUP_MODEL" || say "${c_warn}pull failed; run 'ollama pull $CLEANUP_MODEL' later${c_off}"
+  fi
+fi
+
+# ---- bind keyboard shortcut (per desktop) ---------------------------------
 say ""
-say "Then bind a keyboard shortcut to:  $DIR/dictation-toggle"
-say "  (KDE: System Settings -> Shortcuts -> Custom Shortcut -> Command.)"
+TOGGLE="$DIR/dictation-toggle"
+desk="${DESKTOP,,}"
+case "$desk" in
+  *gnome*)
+    S=org.gnome.settings-daemon.plugins.media-keys
+    P=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/murmur/
+    cur="$(gsettings get $S custom-keybindings 2>/dev/null || echo '@as []')"
+    if [[ "$cur" != *"$P"* ]]; then
+      if [[ "$cur" == "@as []" || "$cur" == "[]" ]]; then cur="['$P']"; else cur="${cur%]}, '$P']"; fi
+      gsettings set $S custom-keybindings "$cur" 2>/dev/null || true
+    fi
+    gsettings set "${S}.custom-keybinding:$P" name 'Murmur dictation' 2>/dev/null || true
+    gsettings set "${S}.custom-keybinding:$P" command "$TOGGLE" 2>/dev/null || true
+    gsettings set "${S}.custom-keybinding:$P" binding '<Super>backslash' 2>/dev/null || true
+    say "${c_ok}bound Super+\\ to dictation-toggle (GNOME).${c_off}" ;;
+  *sway*)
+    f="$HOME/.config/sway/config"
+    if [ -f "$f" ] && ! grep -q "murmur dictation-toggle" "$f"; then
+      printf '\n# murmur dictation-toggle\nbindsym Mod4+backslash exec %s\n' "$TOGGLE" >> "$f"
+      swaymsg reload 2>/dev/null || true
+      say "${c_ok}added Mod4+\\ binding to sway config.${c_off}"
+    else say "${c_dim}sway: add 'bindsym Mod4+backslash exec $TOGGLE' to ~/.config/sway/config${c_off}"; fi ;;
+  *hyprland*)
+    f="$HOME/.config/hypr/hyprland.conf"
+    if [ -f "$f" ] && ! grep -q "murmur dictation-toggle" "$f"; then
+      printf '\n# murmur dictation-toggle\nbind = SUPER, backslash, exec, %s\n' "$TOGGLE" >> "$f"
+      hyprctl reload 2>/dev/null || true
+      say "${c_ok}added Super+\\ binding to hyprland config.${c_off}"
+    else say "${c_dim}hyprland: add 'bind = SUPER, backslash, exec, $TOGGLE' to ~/.config/hypr/hyprland.conf${c_off}"; fi ;;
+  *kde*|*plasma*)
+    say "${c_warn}KDE: bind the shortcut by hand${c_off} (System Settings -> Shortcuts -> add Custom Shortcut -> Command -> $TOGGLE)."
+    say "${c_dim}KDE's CLI shortcut binding is unreliable and needs a re-login, so this one stays manual.${c_off}" ;;
+  *)
+    say "${c_dim}Bind a keyboard shortcut in your desktop to: $TOGGLE${c_off}" ;;
+esac
+
 say ""
-say "${c_dim}Optional: mouse trigger -> edit systemd/murmur-mouse.service, see README.${c_off}"
+say "${c_dim}Optional: mouse-flick trigger -> edit systemd/murmur-mouse.service, see README.${c_off}"
 say "${c_dim}Optional: free VRAM while gaming -> systemctl --user enable --now murmur-gamewatch.service${c_off}"
 say ""
 
