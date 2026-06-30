@@ -147,7 +147,9 @@ def ollama_cleanup(text):
     vocab_line = (", ".join(VOCAB)) if VOCAB else "(none)"
     prompt = (
         "You clean up raw speech-to-text dictation. Apply ONLY these edits:\n"
-        "- remove filler words (um, uh, er, like, you know) when they are fillers\n"
+        "- remove ONLY clear verbal disfluencies: um, uh, er, mm, hmm. Keep every "
+        "other word the speaker said, including unusual, slang, playful, technical, "
+        "or nonsense-sounding ones. They were said on purpose; never drop them.\n"
         "- fix punctuation, capitalization, and obvious mis-transcriptions\n"
         "- these are known proper nouns; fix the spelling/casing of a word ONLY "
         "when it is already an obvious phonetic match to one of them. NEVER replace "
