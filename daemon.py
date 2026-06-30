@@ -310,13 +310,10 @@ def record_session():
         return
 
     audio = np.concatenate(chunks) if chunks else np.zeros(0, dtype=np.float32)
-    # Trim the trailing silence between the last detected speech and the manual
-    # stop-flick. That silent tail is where Whisper hallucinates (it regurgitates
-    # the vocab prompt and loops). Keep a short pad so soft word endings survive.
-    if speech and last_voice is not None:
-        keep_n = int(((last_voice - start) + TRAIL_PAD) * RATE)
-        if 0 < keep_n < audio.size:
-            audio = audio[:keep_n]
+    # No trailing-silence trim. It cut the quiet ends of sentences (words that
+    # drop below the voice threshold as you trail off). vad_filter and
+    # hallucination_silence_threshold at transcribe time handle the silent tail
+    # without chopping real speech.
     if audio.size < int(MIN_SECONDS * RATE):
         notify("…nothing heard", "vd-state")
         _maybe_submit()
