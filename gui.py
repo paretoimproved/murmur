@@ -286,6 +286,10 @@ class SettingsDialog(QDialog):
         self.trailing.setChecked(bool(cfg.get("trailing_space", True)))
         form.addRow(self.trailing)
 
+        keyb = QPushButton("Set up keyboard shortcut...")
+        keyb.clicked.connect(lambda: KeybindDialog().exec())
+        form.addRow("Keyboard shortcut", keyb)
+
         row = QHBoxLayout()
         row.addStretch(1)
         cancel = QPushButton("Cancel")
@@ -375,7 +379,6 @@ class Tray(QSystemTrayIcon):
         menu.addSeparator()
         act_toggle = QAction("Start / stop dictation", triggered=self.toggle)
         menu.addAction(act_toggle)
-        menu.addAction(QAction("Set up keyboard shortcut...", menu, triggered=self.keybind))
         menu.addAction(QAction("Settings...", menu, triggered=self.settings))
         menu.addSeparator()
         menu.addAction(QAction("Quit", menu, triggered=app.quit))

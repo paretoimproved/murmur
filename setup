@@ -265,6 +265,10 @@ case ":$PATH:" in *":$BIN_DIR:"*) ;; *) PATH_NOTE="   ${c_dim}(add $BIN_DIR to P
 APP_DIR="$HOME/.local/share/applications"
 mkdir -p "$APP_DIR"
 sed "s#__MURMUR_DIR__#$DIR#g" "$DIR/murmur.desktop" > "$APP_DIR/murmur.desktop"
+# autostart the tray on login so it's always available
+AUTOSTART_DIR="$HOME/.config/autostart"
+mkdir -p "$AUTOSTART_DIR"
+sed "s#__MURMUR_DIR__#$DIR#g" "$DIR/murmur.desktop" > "$AUTOSTART_DIR/murmur.desktop"
 chmod +x "$DIR/bin/murmur-privileged-setup" "$DIR/gui.py" 2>/dev/null || true
 
 # ---- health check ----------------------------------------------------------
