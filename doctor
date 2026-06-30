@@ -21,8 +21,15 @@ printf "${d}Murmur doctor  (dir: $DIR)${o}\n\n"
 
 # --- core dependencies ---
 have uv        && ok "uv present"        || bad "uv not found"        "install uv: https://docs.astral.sh/uv/"
-if ldconfig -p 2>/dev/null | grep -qi portaudio; then ok "PortAudio audio backend (works with PipeWire/PulseAudio/ALSA/JACK)"
-else bad "PortAudio not found" "install it: Fedora 'sudo dnf install portaudio', Debian/Ubuntu 'sudo apt install libportaudio2', Arch 'sudo pacman -S portaudio'"; fi
+# Source of truth: can sounddevice actually load PortAudio? Fall back to a
+# library-file / ldconfig lookup (ldconfig is in /usr/sbin, often off PATH).
+pa_ok=0
+if [ -d "$DIR/.venv" ] && ( cd "$DIR" && uv run --quiet python -c "import sounddevice" >/dev/null 2>&1 ); then pa_ok=1
+elif ls /usr/lib64/libportaudio.so* /usr/lib/libportaudio.so* /usr/lib/*/libportaudio.so* /lib64/libportaudio.so* >/dev/null 2>&1; then pa_ok=1
+elif /usr/sbin/ldconfig -p 2>/dev/null | grep -qi portaudio; then pa_ok=1
+elif ldconfig -p 2>/dev/null | grep -qi portaudio; then pa_ok=1; fi
+if [ "$pa_ok" = 1 ]; then ok "PortAudio audio backend available (sounddevice can load it)"
+else bad "PortAudio not found" "Fedora: sudo dnf install portaudio && sudo ldconfig  |  Debian/Ubuntu: sudo apt install libportaudio2  |  Arch: sudo pacman -S portaudio"; fi
 have ydotool   && ok "ydotool present"   || bad "ydotool not found"   "install ydotool (and run ydotoold; see README)"
 
 # --- python env synced ---

@@ -44,7 +44,14 @@ elif have pacman;  then PM=pacman
 elif have zypper;  then PM=zypper
 fi
 
-has_portaudio() { ldconfig -p 2>/dev/null | grep -qi portaudio; }
+has_portaudio() {
+  # ldconfig lives in /usr/sbin (often off a user's PATH), so try an absolute
+  # path and a direct library-file lookup before giving up.
+  /usr/sbin/ldconfig -p 2>/dev/null | grep -qi portaudio && return 0
+  ldconfig -p 2>/dev/null | grep -qi portaudio && return 0
+  ls /usr/lib64/libportaudio.so* /usr/lib/libportaudio.so* \
+     /usr/lib/*/libportaudio.so* /lib64/libportaudio.so* >/dev/null 2>&1
+}
 
 say "Detected:"
 say "  distro:   $DISTRO  (pkg manager: ${PM:-unknown})"
