@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# Murmur interactive setup: detect the environment, ask a few questions,
+# write config, sync deps, install the service, and tell you the exact
+# remaining (root) steps. Re-runnable. Use --defaults to skip the questions.
+set -euo pipefail
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/murmur"
+UNIT_DIR="$HOME/.config/systemd/user"
+ASSUME_DEFAULTS=0
+[ "${1:-}" = "--defaults" ] && ASSUME_DEFAULTS=1
+[ -t 0 ] || ASSUME_DEFAULTS=1   # no TTY -> non-interactive
+
+c_ok="\033[32m"; c_warn="\033[33m"; c_err="\033[31m"; c_dim="\033[2m"; c_off="\033[0m"
+say() { printf "%b\n" "$*"; }
+ask() { # ask "prompt" "default" -> echoes answer
+  local prompt="$1" def="$2" ans
+  if [ "$ASSUME_DEFAULTS" = 1 ]; then echo "$def"; return; fi
+  read -rp "$prompt [$def]: " ans || true
+  echo "${ans:-$def}"
+}
+
+say "${c_dim}Murmur setup  (dir: $DIR)${c_off}"
+say ""
+
+# ---- detect ---------------------------------------------------------------
+have() { command -v "$1" >/dev/null 2>&1; }
+DISTRO="$( . /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-unknown}" )"
+SESSION="${XDG_SESSION_TYPE:-unknown} / ${XDG_CURRENT_DESKTOP:-unknown}"
+if have nvidia-smi; then GPU="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)"; HAS_GPU=1
+else GPU="none detected"; HAS_GPU=0; fi
+DEFAULT_MODEL=$([ "$HAS_GPU" = 1 ] && echo "large-v3-turbo" || echo "small.en")
+DEFAULT_COMPUTE=$([ "$HAS_GPU" = 1 ] && echo "float16" || echo "int8")
+
+say "Detected:"
+say "  distro:   $DISTRO"
+say "  session:  $SESSION"
+say "  gpu:      $GPU"
+for t in uv pw-record ydotool ollama; do
+  if have "$t"; then say "  ${c_ok}\xe2\x9c\x93${c_off} $t"; else say "  ${c_warn}\xe2\x9c\x97${c_off} $t (missing)"; fi
+done
+say ""
+
+have uv || { say "${c_err}'uv' is required.${c_off} Install: https://docs.astral.sh/uv/  then re-run ./setup"; exit 1; }
+
+# ---- questions ------------------------------------------------------------
+MODEL="$(ask "Whisper model" "$DEFAULT_MODEL")"
+if have ollama; then CLEANUP_DEF="yes"; else CLEANUP_DEF="no"; fi
+CLEANUP_ANS="$(ask "Enable local LLM cleanup pass (needs Ollama)? (yes/no)" "$CLEANUP_DEF")"
+CLEANUP_MODEL="llama3.1:8b"
+[ "$CLEANUP_ANS" = "yes" ] && CLEANUP_MODEL="$(ask "Cleanup model (Ollama tag)" "$CLEANUP_MODEL")"
+AUTOSTART="$(ask "Start Murmur now and on login? (yes/no)" "yes")"
+CLEANUP_BOOL=$([ "$CLEANUP_ANS" = "yes" ] && echo true || echo false)
+
+# ---- write config ---------------------------------------------------------
+mkdir -p "$CONFIG_DIR"
+if [ -f "$CONFIG_DIR/config.toml" ]; then
+  say "${c_dim}config.toml exists; leaving it. Edit $CONFIG_DIR/config.toml to change settings.${c_off}"
+else
+  sed -e "s/^model = .*/model = \"$MODEL\"/" \
+      -e "s/^compute = .*/compute = \"$DEFAULT_COMPUTE\"/" \
+      -e "s/^cleanup = .*/cleanup = $CLEANUP_BOOL/" \
+      -e "s/^cleanup_model = .*/cleanup_model = \"$CLEANUP_MODEL\"/" \
+      "$DIR/config.toml.example" > "$CONFIG_DIR/config.toml"
+  say "${c_ok}wrote${c_off} $CONFIG_DIR/config.toml"
+fi
+[ -f "$CONFIG_DIR/vocab.txt" ]       || cp "$DIR/vocab.txt.example"       "$CONFIG_DIR/vocab.txt"
+[ -f "$CONFIG_DIR/corrections.txt" ] || cp "$DIR/corrections.txt.example" "$CONFIG_DIR/corrections.txt"
+say "${c_dim}edit your terms in $CONFIG_DIR/vocab.txt and corrections.txt${c_off}"
+
+# ---- deps + service --------------------------------------------------------
+say ""; say "Syncing Python deps (uv sync)..."
+( cd "$DIR" && uv sync )
+
+mkdir -p "$UNIT_DIR"
+for u in murmur.service murmur-gamewatch.service; do
+  sed "s#__MURMUR_DIR__#$DIR#g" "$DIR/systemd/$u" > "$UNIT_DIR/$u"
+done
+systemctl --user daemon-reload
+if [ "$AUTOSTART" = "yes" ]; then
+  systemctl --user enable --now murmur.service
+  say "${c_ok}murmur.service enabled and started.${c_off}"
+else
+  say "${c_dim}service installed but not started. Start with: systemctl --user start murmur.service${c_off}"
+fi
+
+# ---- remaining root steps --------------------------------------------------
+UID_N="$(id -u)"; GID_N="$(id -g)"
+say ""
+say "${c_warn}Remaining manual step (text injection needs ydotoold running):${c_off}"
+say "  sudo tee /etc/systemd/system/ydotoold.service >/dev/null <<EOF"
+say "  [Unit]"
+say "  Description=ydotool daemon"
+say "  [Service]"
+say "  ExecStart=/usr/bin/ydotoold --socket-path=/run/ydotoold.socket --socket-own=$UID_N:$GID_N"
+say "  [Install]"
+say "  WantedBy=multi-user.target"
+say "  EOF"
+say "  sudo systemctl enable --now ydotoold.service"
+say ""
+say "Then bind a keyboard shortcut to:  $DIR/dictation-toggle"
+say "  (KDE: System Settings -> Shortcuts -> Custom Shortcut -> Command.)"
+say ""
+say "${c_dim}Optional: mouse trigger -> edit systemd/murmur-mouse.service, see README.${c_off}"
+say "${c_dim}Optional: free VRAM while gaming -> systemctl --user enable --now murmur-gamewatch.service${c_off}"
+say ""
+
+# ---- health check ----------------------------------------------------------
+if [ -x "$DIR/doctor" ]; then say "Running health check..."; say ""; "$DIR/doctor" || true; fi

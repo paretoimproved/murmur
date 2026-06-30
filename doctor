@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Murmur health check: verifies dependencies, config, and service state,
+# and prints the exact fix for anything that is missing or broken.
+set -uo pipefail
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/murmur"
+CONFIG="$CONFIG_DIR/config.toml"
+SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/murmur.sock"
+YSOCK="${YDOTOOL_SOCKET:-/run/ydotoold.socket}"
+
+g="\033[32m"; y="\033[33m"; r="\033[31m"; d="\033[2m"; o="\033[0m"
+ok(){ printf "  ${g}\xe2\x9c\x93${o} %s\n" "$1"; }
+warn(){ printf "  ${y}\xe2\x9a\xa0${o} %s\n     ${d}%s${o}\n" "$1" "$2"; WARN=$((WARN+1)); }
+bad(){ printf "  ${r}\xe2\x9c\x97${o} %s\n     ${d}fix: %s${o}\n" "$1" "$2"; FAIL=$((FAIL+1)); }
+have(){ command -v "$1" >/dev/null 2>&1; }
+cfgval(){ grep -E "^$1\s*=" "$CONFIG" 2>/dev/null | head -1 | sed -E 's/^[^=]*=\s*//; s/\s*#.*//; s/^"//; s/"$//; s/[[:space:]]*$//'; }
+WARN=0; FAIL=0
+
+printf "${d}Murmur doctor  (dir: $DIR)${o}\n\n"
+
+# --- core dependencies ---
+have uv        && ok "uv present"        || bad "uv not found"        "install uv: https://docs.astral.sh/uv/"
+have pw-record && ok "PipeWire (pw-record)" || bad "pw-record not found" "install pipewire / pipewire-utils for your distro"
+have ydotool   && ok "ydotool present"   || bad "ydotool not found"   "install ydotool (and run ydotoold; see README)"
+
+# --- python env synced ---
+if [ -d "$DIR/.venv" ]; then ok "Python env synced (.venv)"; else bad "Python deps not synced" "run: cd $DIR && uv sync   (or ./setup)"; fi
+
+# --- GPU (informational) ---
+if have nvidia-smi; then ok "NVIDIA GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)"
+else warn "no NVIDIA GPU detected" "CPU works but is slower; set model=\"small.en\", compute=\"int8\" in config.toml"; fi
+
+# --- ydotoold socket ---
+if [ -S "$YSOCK" ]; then
+  if [ -w "$YSOCK" ]; then ok "ydotoold socket reachable ($YSOCK)"
+  else warn "ydotoold socket not writable by you ($YSOCK)" "start ydotoold with --socket-own=$(id -u):$(id -g) (see README/setup)"; fi
+else bad "ydotoold socket missing ($YSOCK)" "set up the ydotoold service (./setup prints the exact unit)"; fi
+
+# --- config ---
+if [ -f "$CONFIG" ]; then ok "config: $CONFIG"
+else warn "no config.toml (using built-in defaults)" "run ./setup, or copy config.toml.example to $CONFIG"; fi
+
+# --- cleanup / ollama ---
+CLEANUP="$(cfgval cleanup)"; CLEANUP="${CLEANUP:-true}"
+if [ "$CLEANUP" = "false" ]; then
+  ok "LLM cleanup disabled (raw transcript)"
+else
+  OURL="$(cfgval ollama_url)"; OURL="${OURL:-http://localhost:11434}"
+  CMODEL="$(cfgval cleanup_model)"; CMODEL="${CMODEL:-llama3.1:8b}"
+  if have ollama || curl -sf -m 3 "$OURL/api/tags" >/dev/null 2>&1; then
+    if curl -sf -m 3 "$OURL/api/tags" 2>/dev/null | grep -q "\"${CMODEL%%:*}"; then
+      ok "Ollama reachable, cleanup model present ($CMODEL)"
+    else
+      warn "Ollama reachable but model '$CMODEL' not pulled" "run: ollama pull $CMODEL   (or set cleanup=false)"
+    fi
+  else
+    bad "Ollama not reachable at $OURL" "start Ollama, or set cleanup=false in config.toml"
+  fi
+fi
+
+# --- service + socket ---
+if systemctl --user is-active --quiet murmur.service; then
+  ok "murmur.service running"
+  [ -S "$SOCK" ] && ok "daemon socket live ($SOCK)" || warn "daemon socket not found yet" "model may still be loading; check: journalctl --user -u murmur.service -f"
+else
+  warn "murmur.service not running" "start: systemctl --user start murmur.service"
+fi
+
+printf "\n"
+if [ "$FAIL" -gt 0 ]; then printf "${r}%d problem(s)${o}, ${y}%d warning(s)${o}. Fix the \xe2\x9c\x97 items above.\n" "$FAIL" "$WARN"
+elif [ "$WARN" -gt 0 ]; then printf "${y}%d warning(s)${o}, no blockers. You can dictate.\n" "$WARN"
+else printf "${g}All good.${o} Bind dictation-toggle to a shortcut and start talking.\n"; fi

@@ -22,39 +22,84 @@ from faster_whisper import WhisperModel
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# ---- config (override via environment) ------------------------------------
+# ---- config: defaults < ~/.config/murmur/config.toml < VD_* env vars -------
+import tomllib
+
+CONFIG_DIR = os.environ.get(
+    "MURMUR_CONFIG_DIR",
+    os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")), "murmur"),
+)
+CONFIG_PATH = os.path.join(CONFIG_DIR, "config.toml")
+
+
+def _load_toml():
+    try:
+        with open(CONFIG_PATH, "rb") as f:
+            return tomllib.load(f)
+    except FileNotFoundError:
+        return {}
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        print(f"config: ignoring {CONFIG_PATH} ({e})", file=sys.stderr)
+        return {}
+
+
+_TOML = _load_toml()
+
+
+def _truthy(v):
+    if isinstance(v, bool):
+        return v
+    return str(v).strip().lower() in ("1", "true", "yes", "on")
+
+
+def cfg(key, default, cast=str):
+    """Resolve a setting: env VD_<KEY> wins, then config.toml, then default."""
+    env = os.environ.get("VD_" + key.upper())
+    raw = env if env is not None else _TOML.get(key, default)
+    try:
+        return cast(raw)
+    except (TypeError, ValueError):
+        return default
+
+
 RUNTIME = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
 SOCK_PATH = os.path.join(RUNTIME, "murmur.sock")
 YDOTOOL_SOCKET = os.environ.get("YDOTOOL_SOCKET", "/run/ydotoold.socket")
 
-MODEL_NAME = os.environ.get("VD_MODEL", "large-v3-turbo")
-COMPUTE = os.environ.get("VD_COMPUTE", "float16")
-LANGUAGE = os.environ.get("VD_LANG", "en")
-BEAM = int(os.environ.get("VD_BEAM", "1"))
+MODEL_NAME = cfg("model", "large-v3-turbo")
+COMPUTE = cfg("compute", "float16")
+LANGUAGE = cfg("lang", "en")
+BEAM = cfg("beam", 1, int)
 
 RATE = 16000
 CHUNK = 4096                      # bytes per read (~0.128 s of s16 mono)
-SILENCE_RMS = float(os.environ.get("VD_SILENCE_RMS", "0.012"))
+SILENCE_RMS = cfg("silence_rms", 0.012, float)
 # >0 = auto-stop after N seconds of quiet; 0 = manual stop only (flick left to end)
-SILENCE_HANG = float(os.environ.get("VD_SILENCE_HANG", "0"))
-NO_SPEECH_TIMEOUT = float(os.environ.get("VD_NO_SPEECH_TIMEOUT", "20.0"))
-MAX_SECONDS = float(os.environ.get("VD_MAX_SECONDS", "300"))
+SILENCE_HANG = cfg("silence_hang", 0.0, float)
+NO_SPEECH_TIMEOUT = cfg("no_speech_timeout", 20.0, float)
+MAX_SECONDS = cfg("max_seconds", 300.0, float)
 MIN_SECONDS = 0.3                 # ignore blips shorter than this
-KEY_DELAY = os.environ.get("VD_KEY_DELAY", "1")     # ms between keys
-KEY_HOLD = os.environ.get("VD_KEY_HOLD", "1")       # ms each key held
-TRAILING_SPACE = os.environ.get("VD_TRAILING_SPACE", "1") == "1"
-TRAIL_PAD = float(os.environ.get("VD_TRAIL_PAD", "0.6"))  # seconds of audio kept after last detected speech
+KEY_DELAY = str(cfg("key_delay", "1"))     # ms between keys
+KEY_HOLD = str(cfg("key_hold", "1"))       # ms each key held
+TRAILING_SPACE = cfg("trailing_space", True, _truthy)
+TRAIL_PAD = cfg("trail_pad", 0.6, float)  # seconds of audio kept after last detected speech
 
 # ---- cleanup / vocabulary -------------------------------------------------
-CLEANUP = os.environ.get("VD_CLEANUP", "1") == "1"
-CLEANUP_MODEL = os.environ.get("VD_CLEANUP_MODEL", "llama3.1:8b")
-OLLAMA_URL = os.environ.get("VD_OLLAMA_URL", "http://localhost:11434")
-CLEANUP_KEEPALIVE = os.environ.get("VD_CLEANUP_KEEPALIVE", "10m")
-CLEANUP_TIMEOUT = float(os.environ.get("VD_CLEANUP_TIMEOUT", "12"))
+CLEANUP = cfg("cleanup", True, _truthy)
+CLEANUP_MODEL = cfg("cleanup_model", "llama3.1:8b")
+OLLAMA_URL = cfg("ollama_url", "http://localhost:11434")
+CLEANUP_KEEPALIVE = cfg("cleanup_keepalive", "10m")
+CLEANUP_TIMEOUT = cfg("cleanup_timeout", 12.0, float)
+
+
+def _config_file(name):
+    """Prefer the user config dir, fall back to the repo dir."""
+    p = os.path.join(CONFIG_DIR, name)
+    return p if os.path.exists(p) else os.path.join(APP_DIR, name)
 
 
 def _load_vocab():
-    path = os.path.join(APP_DIR, "vocab.txt")
+    path = _config_file("vocab.txt")
     if not os.path.exists(path):
         return []
     terms = []
@@ -66,7 +111,7 @@ def _load_vocab():
 
 
 def _load_corrections():
-    path = os.path.join(APP_DIR, "corrections.txt")
+    path = _config_file("corrections.txt")
     pairs = []
     if not os.path.exists(path):
         return pairs

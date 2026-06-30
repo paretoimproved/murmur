@@ -37,10 +37,16 @@ mic ──pw-record──▶ faster-whisper (resident in VRAM) ──▶ local L
 ```bash
 git clone https://github.com/paretoimproved/murmur.git
 cd murmur
-./install.sh
+./setup
 ```
 
-`install.sh` runs `uv sync`, seeds `vocab.txt`/`corrections.txt` from the examples, and installs + starts a user systemd service. Then bind `dictation-toggle` to a keyboard shortcut (System Settings → Shortcuts on KDE) and you're dictating.
+`./setup` detects your environment (distro, GPU vs CPU, PipeWire, ydotool, Ollama), asks a few questions, writes `~/.config/murmur/config.toml`, runs `uv sync`, and installs + starts a user systemd service. It then prints the exact commands for the one step it can't safely do for you (the root `ydotoold` service) and runs a health check. Pass `--defaults` for a non-interactive install with sensible choices.
+
+Then bind `dictation-toggle` to a keyboard shortcut (KDE: System Settings -> Shortcuts -> Custom Shortcut -> Command) and you're dictating.
+
+**Check your setup any time** with `./doctor`: it prints a pass/fail for every dependency and the exact fix for anything missing.
+
+**Unusual distro or a setup the wizard doesn't cover?** See [SETUP_WITH_AI.md](SETUP_WITH_AI.md) to hand the install to a coding agent that adapts to your exact machine.
 
 You also need `ydotoold` running with a socket your user can reach. The simplest setup is a root service with the socket owned by your user:
 
@@ -56,22 +62,24 @@ ExecStart=/usr/bin/ydotoold --socket-path=/run/ydotoold.socket --socket-own=<uid
 
 ## Configuration
 
-All knobs are `VD_*` environment variables. Set them in the systemd unit (`systemctl --user edit murmur.service`, add `Environment=VD_X=...`), then restart.
+Settings live in `~/.config/murmur/config.toml` (created by `./setup` from [config.toml.example](config.toml.example)). Edit it and restart: `systemctl --user restart murmur.service`. Every key can also be overridden with a `VD_<KEY>` environment variable for power users (env wins over the file), e.g. `VD_MODEL=small.en`.
 
-| Variable | Default | What it does |
+| `config.toml` key | Default | What it does |
 |---|---|---|
-| `VD_MODEL` | `large-v3-turbo` | Whisper model. `large-v3` for accuracy, `small.en`/`distil-large-v3` for lower latency. |
-| `VD_CLEANUP` | `1` | Local LLM cleanup pass on/off. |
-| `VD_CLEANUP_MODEL` | `llama3.1:8b` | Ollama model for cleanup. |
-| `VD_CLEANUP_KEEPALIVE` | `10m` | How long to keep the cleanup model warm in VRAM. |
-| `VD_SILENCE_HANG` | `0` | `0` = manual stop only. Set seconds to auto-stop after that much quiet (cuts off thinking pauses). |
-| `VD_SILENCE_RMS` | `0.012` | Voice-activity threshold. Raise in a noisy room, lower if it clips you. |
-| `VD_TRAIL_PAD` | `0.6` | Seconds of audio kept after your last word, before the trailing silence is trimmed. |
-| `VD_MAX_SECONDS` | `300` | Hard cap per dictation. |
-| `VD_LANG` | `en` | Language. |
-| `VD_BEAM` | `1` | Beam size. `5` is marginally more accurate, slower. |
-| `VD_TRAILING_SPACE` | `1` | Append a space after each dictation. |
-| `VD_MOUSE_NAME` | _(unset)_ | For the optional mouse trigger: device name to target (see `/proc/bus/input/devices`). Empty = first mouse found. |
+| `model` | `large-v3-turbo` | Whisper model. `large-v3` for accuracy, `small.en`/`distil-large-v3` for lower latency or CPU. |
+| `compute` | `float16` | `int8` on CPU. |
+| `cleanup` | `true` | Local LLM cleanup pass on/off. |
+| `cleanup_model` | `llama3.1:8b` | Ollama model for cleanup. |
+| `cleanup_keepalive` | `10m` | How long to keep the cleanup model warm in VRAM. |
+| `silence_hang` | `0` | `0` = manual stop only. Set seconds to auto-stop after that much quiet (cuts off thinking pauses). |
+| `silence_rms` | `0.012` | Voice-activity threshold. Raise in a noisy room, lower if it clips you. |
+| `trail_pad` | `0.6` | Seconds of audio kept after your last word, before trailing silence is trimmed. |
+| `max_seconds` | `300` | Hard cap per dictation. |
+| `lang` | `en` | Language. |
+| `beam` | `1` | Beam size. `5` is marginally more accurate, slower. |
+| `trailing_space` | `true` | Append a space after each dictation. |
+
+The optional mouse trigger reads one extra setting from the environment only: `VD_MOUSE_NAME` (device name to target, see `/proc/bus/input/devices`; empty = first mouse found).
 
 ### Vocabulary and corrections
 

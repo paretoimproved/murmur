@@ -1,0 +1,29 @@
+# Murmur configuration.
+# `./setup` writes this to ~/.config/murmur/config.toml. Edit it there.
+# Every key is optional; omitted keys use the default shown.
+# Precedence: VD_* environment variables override this file, which overrides defaults.
+
+# --- transcription ---
+model = "large-v3-turbo"    # "large-v3" = max accuracy; "small.en"/"distil-large-v3" = faster / CPU-friendly
+compute = "float16"         # use "int8" on CPU
+lang = "en"
+beam = 1                    # 5 is marginally more accurate, slower
+
+# --- capture / silence ---
+silence_hang = 0.0          # 0 = manual stop only; >0 = auto-stop after N seconds of quiet
+silence_rms = 0.012         # voice-activity threshold (raise in a noisy room, lower if it clips you)
+trail_pad = 0.6             # seconds of audio kept after your last word before trailing silence is trimmed
+no_speech_timeout = 20.0    # cancel if you never start talking
+max_seconds = 300.0         # hard cap per dictation
+
+# --- typing ---
+trailing_space = true       # append a space after each dictation
+key_delay = 1               # ms between typed keys
+key_hold = 1                # ms each key held
+
+# --- local LLM cleanup (Ollama) ---
+cleanup = true              # false to skip the cleanup pass entirely (raw transcript only)
+cleanup_model = "llama3.1:8b"
+ollama_url = "http://localhost:11434"
+cleanup_keepalive = "10m"   # keep the cleanup model warm in VRAM this long
+cleanup_timeout = 12.0      # seconds before giving up on cleanup and using the raw transcript
