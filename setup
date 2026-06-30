@@ -56,9 +56,19 @@ done
 if has_portaudio; then say "  ${c_ok}\xe2\x9c\x93${c_off} portaudio"; else say "  ${c_warn}\xe2\x9c\x97${c_off} portaudio (missing)"; fi
 say ""
 
-have uv || { say "${c_err}'uv' is required and not installed.${c_off}"
-  say "Install it from your package manager or https://docs.astral.sh/uv/ (no curl-to-shell here), then re-run ./setup."
-  exit 1; }
+if ! have uv; then
+  say "${c_err}'uv' is required and not installed.${c_off}  Install it, then re-run ./setup:"
+  case "$PM" in
+    dnf)    say "  ${c_ok}sudo dnf install uv${c_off}" ;;
+    apt)    say "  ${c_ok}sudo apt install uv${c_off}   ${c_dim}(Debian 13+/Ubuntu 24.10+; on older releases use pipx below)${c_off}" ;;
+    pacman) say "  ${c_ok}sudo pacman -S uv${c_off}" ;;
+    zypper) say "  ${c_ok}sudo zypper install uv${c_off}" ;;
+    *)      say "  install the 'uv' package with your distro's package manager" ;;
+  esac
+  say "  ${c_dim}no distro package? ->${c_off} ${c_ok}pipx install uv${c_off}   ${c_dim}or${c_off} ${c_ok}pip install --user uv${c_off}"
+  say "  ${c_dim}other options: https://docs.astral.sh/uv/getting-started/installation/${c_off}"
+  exit 1
+fi
 
 # ---- questions ------------------------------------------------------------
 MODEL="$(ask "Whisper model" "$DEFAULT_MODEL")"
