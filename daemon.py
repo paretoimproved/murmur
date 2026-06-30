@@ -251,6 +251,10 @@ def record_session():
     last_voice = None
     speech = False
     block = max(256, RATE // 8)       # ~0.125 s per read
+    try:
+        log(f"recording from input device: {sd.query_devices(kind='input')['name']}")
+    except Exception as e:
+        log(f"could not resolve input device: {e}")
     notify("\U0001F3A4  Listening…", "vd-state")
     try:
         # PortAudio backend: works across PipeWire, PulseAudio, ALSA and JACK,

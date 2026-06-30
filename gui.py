@@ -310,6 +310,58 @@ class SettingsDialog(QDialog):
         self.accept()
 
 
+class KeybindDialog(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Murmur, keyboard shortcut")
+        self.setMinimumWidth(540)
+        toggle = os.path.join(DIR, "dictation-toggle")
+        v = QVBoxLayout(self)
+        v.addWidget(QLabel(
+            "A keyboard shortcut is the reliable way to dictate: unlike clicking the\n"
+            "tray, a key never changes which window is focused, so the text lands where\n"
+            "your cursor is."))
+        v.addWidget(QLabel("<b>1.</b> Copy this command:"))
+        row = QHBoxLayout()
+        field = QLineEdit(toggle)
+        field.setReadOnly(True)
+        copy = QPushButton("Copy")
+        copy.clicked.connect(lambda: (QApplication.clipboard().setText(toggle),
+                                      copy.setText("Copied")))
+        row.addWidget(field)
+        row.addWidget(copy)
+        v.addLayout(row)
+        v.addWidget(QLabel(
+            "<b>2.</b> Open keyboard settings, add a custom shortcut that runs that\n"
+            "command, and assign it a key (Super+\\ is the convention)."))
+        openb = QPushButton("Open keyboard settings")
+        openb.clicked.connect(self._open_settings)
+        v.addWidget(openb)
+        note = QLabel("<i>KDE: System Settings - Shortcuts - Add Command. "
+                      "You may need to log out and back in for it to take effect.</i>")
+        note.setWordWrap(True)
+        v.addWidget(note)
+        close = QPushButton("Close")
+        close.clicked.connect(self.accept)
+        v.addWidget(close)
+
+    def _open_settings(self):
+        desk = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
+        candidates = []
+        if "kde" in desk or "plasma" in desk:
+            candidates = [["systemsettings", "kcm_keys"], ["kcmshell6", "kcm_keys"],
+                          ["systemsettings5", "kcm_keys"]]
+        elif "gnome" in desk:
+            candidates = [["gnome-control-center", "keyboard"]]
+        for c in candidates:
+            if shutil.which(c[0]):
+                subprocess.Popen(c)
+                return
+        QMessageBox.information(self, "Murmur",
+                               "Open your desktop's keyboard-shortcut settings manually, "
+                               "then add a command shortcut for the copied path.")
+
+
 class Tray(QSystemTrayIcon):
     def __init__(self, app):
         super().__init__()
@@ -323,6 +375,7 @@ class Tray(QSystemTrayIcon):
         menu.addSeparator()
         act_toggle = QAction("Start / stop dictation", triggered=self.toggle)
         menu.addAction(act_toggle)
+        menu.addAction(QAction("Set up keyboard shortcut...", menu, triggered=self.keybind))
         menu.addAction(QAction("Settings...", menu, triggered=self.settings))
         menu.addSeparator()
         menu.addAction(QAction("Quit", menu, triggered=app.quit))
@@ -341,6 +394,9 @@ class Tray(QSystemTrayIcon):
     def toggle(self):
         if daemon_cmd("toggle") is None:
             self.showMessage("Murmur", "Dictation service isn't running.", QSystemTrayIcon.Warning, 4000)
+
+    def keybind(self):
+        KeybindDialog().exec()
 
     def settings(self):
         SettingsDialog().exec()
