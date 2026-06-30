@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Free all dictation VRAM (Whisper daemon + Ollama cleanup model). Run on game start.
+systemctl --user stop murmur.service 2>/dev/null
+ollama stop "${VD_CLEANUP_MODEL:-llama3.1:8b}" 2>/dev/null
+notify-send -a "Voice Dictation" -t 2000 "Dictation paused (game mode)" 2>/dev/null || true

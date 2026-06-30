@@ -1,0 +1,14 @@
+# Python / uv
+.venv/
+__pycache__/
+*.pyc
+
+# Runtime
+*.sock
+
+# Personal config (ship the .example versions instead)
+vocab.txt
+corrections.txt
+
+# OS
+.DS_Store

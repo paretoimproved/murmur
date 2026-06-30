@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Bring the dictation daemon back (Whisper reloads in ~1s). Run on game exit.
+systemctl --user start murmur.service 2>/dev/null
+notify-send -a "Voice Dictation" -t 2000 "Dictation resumed" 2>/dev/null || true

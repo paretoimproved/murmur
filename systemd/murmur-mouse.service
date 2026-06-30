@@ -1,0 +1,17 @@
+[Unit]
+Description=Murmur: mouse wheel-flick trigger (optional)
+After=multi-user.target
+
+[Service]
+Type=simple
+# Optional trigger. Runs as root for /dev/input access; reaches the user-owned
+# daemon socket. Replace the placeholders before installing to
+# /etc/systemd/system/ then: sudo systemctl enable --now murmur-mouse.service
+Environment=VD_UID=__UID__
+Environment=VD_MOUSE_NAME=__MOUSE_NAME__
+ExecStart=/usr/bin/python3 __MURMUR_DIR__/mouse-trigger.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

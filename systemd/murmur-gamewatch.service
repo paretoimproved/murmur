@@ -1,0 +1,13 @@
+[Unit]
+Description=Murmur: auto-pause dictation while a Steam game is running
+After=graphical-session.target
+
+[Service]
+Type=simple
+# install.sh replaces __MURMUR_DIR__ with the cloned repo path
+ExecStart=__MURMUR_DIR__/watch-games.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

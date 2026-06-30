@@ -1,0 +1,15 @@
+[Unit]
+Description=Murmur local voice dictation daemon (faster-whisper, resident model)
+After=graphical-session.target pipewire.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+# install.sh replaces __MURMUR_DIR__ with the cloned repo path
+ExecStart=__MURMUR_DIR__/run-daemon.sh
+Restart=on-failure
+RestartSec=3
+SuccessExitStatus=143 SIGTERM
+
+[Install]
+WantedBy=default.target

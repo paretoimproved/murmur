@@ -1,0 +1,8 @@
+# Deterministic fixes applied after transcription (and after cleanup).
+# Format: wrong text => correct text   (case-insensitive, whole words)
+# Replace with the terms YOUR setup reliably mishears.
+why dotool => ydotool
+y dotool => ydotool
+pipe wire => PipeWire
+prox mox => Proxmox
+post gres => Postgres

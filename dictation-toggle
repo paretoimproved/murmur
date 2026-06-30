@@ -1,0 +1,18 @@
+#!/usr/bin/env python3
+"""Tiny client: send a toggle to the dictation daemon. Bound to a global hotkey."""
+import os
+import socket
+import sys
+
+runtime = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+sock_path = os.path.join(runtime, "murmur.sock")
+
+try:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(5)
+    s.connect(sock_path)
+    s.sendall(b"toggle\n")
+    print(s.recv(64).decode(errors="replace").strip())
+except (FileNotFoundError, ConnectionRefusedError, socket.timeout) as e:
+    sys.stderr.write(f"dictation daemon not reachable: {e}\n")
+    sys.exit(1)

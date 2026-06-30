@@ -1,0 +1,13 @@
+# Proper nouns to bias transcription toward and protect during cleanup.
+# One term per line. Lines starting with # are ignored.
+# Replace these with the names, products, and jargon YOU say often.
+faster-whisper
+Ollama
+ydotool
+PipeWire
+Wayland
+Kubernetes
+PostgreSQL
+TypeScript
+Postgres
+GitHub
