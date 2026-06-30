@@ -226,9 +226,9 @@ if [ "$CLEANUP_ANS" = "yes" ] && have ollama; then
 fi
 
 # ---- bind keyboard shortcut (per desktop) ---------------------------------
-say ""
 TOGGLE="$DIR/dictation-toggle"
 desk="${DESKTOP,,}"
+KEYBIND_AUTO=0
 case "$desk" in
   *gnome*)
     S=org.gnome.settings-daemon.plugins.media-keys
@@ -240,33 +240,61 @@ case "$desk" in
     fi
     gsettings set "${S}.custom-keybinding:$P" name 'Murmur dictation' 2>/dev/null || true
     gsettings set "${S}.custom-keybinding:$P" command "$TOGGLE" 2>/dev/null || true
-    gsettings set "${S}.custom-keybinding:$P" binding '<Super>backslash' 2>/dev/null || true
-    say "${c_ok}bound Super+\\ to dictation-toggle (GNOME).${c_off}" ;;
+    gsettings set "${S}.custom-keybinding:$P" binding '<Super>backslash' 2>/dev/null && KEYBIND_AUTO=1 || true ;;
   *sway*)
     f="$HOME/.config/sway/config"
-    if [ -f "$f" ] && ! grep -q "murmur dictation-toggle" "$f"; then
-      printf '\n# murmur dictation-toggle\nbindsym Mod4+backslash exec %s\n' "$TOGGLE" >> "$f"
-      swaymsg reload 2>/dev/null || true
-      say "${c_ok}added Mod4+\\ binding to sway config.${c_off}"
-    else say "${c_dim}sway: add 'bindsym Mod4+backslash exec $TOGGLE' to ~/.config/sway/config${c_off}"; fi ;;
+    if [ -f "$f" ]; then
+      grep -q "murmur dictation-toggle" "$f" || printf '\n# murmur dictation-toggle\nbindsym Mod4+backslash exec %s\n' "$TOGGLE" >> "$f"
+      swaymsg reload 2>/dev/null || true; KEYBIND_AUTO=1
+    fi ;;
   *hyprland*)
     f="$HOME/.config/hypr/hyprland.conf"
-    if [ -f "$f" ] && ! grep -q "murmur dictation-toggle" "$f"; then
-      printf '\n# murmur dictation-toggle\nbind = SUPER, backslash, exec, %s\n' "$TOGGLE" >> "$f"
-      hyprctl reload 2>/dev/null || true
-      say "${c_ok}added Super+\\ binding to hyprland config.${c_off}"
-    else say "${c_dim}hyprland: add 'bind = SUPER, backslash, exec, $TOGGLE' to ~/.config/hypr/hyprland.conf${c_off}"; fi ;;
-  *kde*|*plasma*)
-    say "${c_warn}KDE: bind the shortcut by hand${c_off} (System Settings -> Shortcuts -> add Custom Shortcut -> Command -> $TOGGLE)."
-    say "${c_dim}KDE's CLI shortcut binding is unreliable and needs a re-login, so this one stays manual.${c_off}" ;;
-  *)
-    say "${c_dim}Bind a keyboard shortcut in your desktop to: $TOGGLE${c_off}" ;;
+    if [ -f "$f" ]; then
+      grep -q "murmur dictation-toggle" "$f" || printf '\n# murmur dictation-toggle\nbind = SUPER, backslash, exec, %s\n' "$TOGGLE" >> "$f"
+      hyprctl reload 2>/dev/null || true; KEYBIND_AUTO=1
+    fi ;;
 esac
 
-say ""
-say "${c_dim}Optional: mouse-flick trigger -> edit systemd/murmur-mouse.service, see README.${c_off}"
-say "${c_dim}Optional: free VRAM while gaming -> systemctl --user enable --now murmur-gamewatch.service${c_off}"
-say ""
+# ---- install the 'murmur' launcher on PATH --------------------------------
+BIN_DIR="$HOME/.local/bin"
+mkdir -p "$BIN_DIR"
+ln -sf "$DIR/murmur" "$BIN_DIR/murmur"
+PATH_NOTE=""
+case ":$PATH:" in *":$BIN_DIR:"*) ;; *) PATH_NOTE="   ${c_dim}(add $BIN_DIR to PATH to run it from anywhere)${c_off}" ;; esac
 
 # ---- health check ----------------------------------------------------------
-if [ -x "$DIR/doctor" ]; then say "Running health check..."; say ""; "$DIR/doctor" || true; fi
+if [ -x "$DIR/doctor" ]; then say ""; say "Running health check..."; say ""; "$DIR/doctor" || true; fi
+
+# ---- closing summary: what to do + how to use -----------------------------
+say ""
+say "${c_ok}====================================================${c_off}"
+say "${c_ok}  Murmur is installed.${c_off}"
+say "${c_ok}====================================================${c_off}"
+say ""
+say "${c_ok}How to dictate${c_off}"
+say "  1. Click into any text field (editor, browser, chat)."
+say "  2. Press your shortcut to start; a 'Listening' notification appears."
+say "  3. Speak, then press it again. Your words type into that field."
+say ""
+if [ "$KEYBIND_AUTO" = 1 ]; then
+  say "${c_ok}Your shortcut is bound: Super+\\ (Meta + backslash).${c_off}"
+else
+  say "${c_warn}LAST STEP, bind your shortcut (this is what makes it usable):${c_off}"
+  say "  In your desktop's keyboard-shortcut settings, add a custom shortcut that"
+  say "  runs this command and assign it a key (Super+\\ is the convention):"
+  say "    ${c_ok}$TOGGLE${c_off}"
+  case "$desk" in
+    *kde*|*plasma*) say "  ${c_dim}KDE: System Settings -> Shortcuts -> Add Command -> paste the path -> Apply, then log out/in.${c_off}" ;;
+  esac
+  say "  ${c_dim}To sanity-check the daemon first: run '$TOGGLE' in a terminal to start/stop (text lands in the terminal).${c_off}"
+fi
+if [ "$CLEANUP_ANS" != "yes" ]; then
+  say ""
+  say "${c_dim}Cleaner output (optional): install Ollama from https://ollama.com, then set${c_off}"
+  say "${c_dim}  cleanup = true   in $CONFIG_DIR/config.toml  and run:  murmur restart${c_off}"
+fi
+say ""
+say "${c_ok}Run 'murmur' anytime${c_off} for status and everything you can do${PATH_NOTE}:"
+say "  ${c_ok}murmur${c_off} (help) · ${c_ok}murmur config${c_off} · ${c_ok}murmur doctor${c_off} · ${c_ok}murmur logs${c_off} · ${c_ok}murmur restart${c_off}"
+say "${c_dim}Optional extras (see README): mouse-flick trigger, auto-pause while gaming.${c_off}"
+say ""

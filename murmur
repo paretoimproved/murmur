@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Murmur control + help. `./setup` symlinks this to ~/.local/bin/murmur so you
+# can run `murmur` from anywhere. Run with no arguments for status and help.
+set -uo pipefail
+DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/murmur/config.toml"
+g="\033[32m"; d="\033[2m"; o="\033[0m"
+
+case "${1:-help}" in
+  toggle)  exec "$DIR/dictation-toggle" ;;
+  doctor)  exec "$DIR/doctor" ;;
+  setup)   exec "$DIR/setup" "${@:2}" ;;
+  config)  exec "${EDITOR:-nano}" "$CONFIG" ;;
+  logs)    exec journalctl --user -u murmur.service -f ;;
+  start|stop|restart|status) exec systemctl --user "$1" murmur.service ;;
+  help|-h|--help|"")
+    state="$(systemctl --user is-active murmur.service 2>/dev/null)"; state="${state:-unknown}"
+    printf "${g}Murmur${o}  (dictation service: %s)\n\n" "$state"
+    printf "To dictate: click into a text field, press your shortcut, speak, press again.\n\n"
+    printf "Commands:\n"
+    printf "  ${g}murmur toggle${o}    start/stop dictation now (types into the focused window)\n"
+    printf "  ${g}murmur config${o}    edit settings: model, cleanup on/off, etc.\n"
+    printf "  ${g}murmur doctor${o}    health check, with the fix for anything missing\n"
+    printf "  ${g}murmur logs${o}      watch transcripts as you speak\n"
+    printf "  ${g}murmur restart${o}   apply config changes (also: start | stop | status)\n"
+    printf "  ${g}murmur setup${o}     re-run setup\n"
+    printf "\n${d}settings file: %s${o}\n" "$CONFIG"
+    ;;
+  *) printf "unknown command: %s   (run 'murmur' for help)\n" "$1" >&2; exit 1 ;;
+esac

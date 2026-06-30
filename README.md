@@ -53,8 +53,18 @@ A few honest edges: `uv` and Ollama are prerequisites you install yourself (Murm
 
 ## Usage
 
-- Press your toggle shortcut, speak (pause to think as long as you want, it records through silence), press again to stop. The cleaned text types into the focused window.
-- `dictation-toggle` toggles; that's the only client you need for keyboard use.
+**Dictate:** focus a text field, press your shortcut, speak (pause to think as long as you want, it records through silence), press it again. The text types into the focused window.
+
+**Control it with `murmur`** (installed on your PATH by `./setup`). Run it with no arguments any time for status and the full menu:
+
+| Command | Does |
+|---|---|
+| `murmur` | status + help |
+| `murmur config` | edit settings (model, cleanup, etc.) |
+| `murmur doctor` | health check with fixes |
+| `murmur logs` | watch transcripts live |
+| `murmur restart` | apply config changes (also `start` / `stop` / `status`) |
+| `murmur toggle` | dictate without a shortcut (types into the focused window) |
 
 ## Configuration
 
