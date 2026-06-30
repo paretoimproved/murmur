@@ -70,13 +70,11 @@ if ! have uv; then
   exit 1
 fi
 
-# ---- questions ------------------------------------------------------------
-MODEL="$(ask "Whisper model" "$DEFAULT_MODEL")"
-if have ollama; then CLEANUP_DEF="yes"; else CLEANUP_DEF="no"; fi
-CLEANUP_ANS="$(ask "Enable local LLM cleanup pass (needs Ollama)? (yes/no)" "$CLEANUP_DEF")"
+# ---- decide settings automatically (all changeable later in config.toml) --
+MODEL="$DEFAULT_MODEL"
+if have ollama; then CLEANUP_ANS="yes"; else CLEANUP_ANS="no"; fi
 CLEANUP_MODEL="llama3.1:8b"
-[ "$CLEANUP_ANS" = "yes" ] && CLEANUP_MODEL="$(ask "Cleanup model (Ollama tag)" "$CLEANUP_MODEL")"
-AUTOSTART="$(ask "Start Murmur now and on login? (yes/no)" "yes")"
+AUTOSTART="yes"
 CLEANUP_BOOL=$([ "$CLEANUP_ANS" = "yes" ] && echo true || echo false)
 
 # Which system packages are missing (mapped to this distro's names)?
@@ -96,11 +94,30 @@ have ydotool    || MISSING="$MISSING $(pkg_for ydotool)"
 have notify-send|| MISSING="$MISSING $(pkg_for libnotify)"
 MISSING="$(echo "$MISSING" | xargs || true)"
 
+# ---- show the plan, then ask once -----------------------------------------
+say "Here is what setup will do (everything is changeable later in config.toml):"
+if [ -f "$CONFIG_DIR/config.toml" ]; then
+  say "  - keep your existing config: $CONFIG_DIR/config.toml"
+else
+  say "  - transcription model: ${c_ok}$MODEL${c_off} ($DEFAULT_COMPUTE)"
+  if [ "$CLEANUP_ANS" = "yes" ]; then
+    say "  - LLM cleanup: ${c_ok}on${c_off} ($CLEANUP_MODEL)"
+  else
+    say "  - LLM cleanup: ${c_warn}off${c_off} ${c_dim}(Ollama not found; install it later and set cleanup=true in config.toml for cleaner text)${c_off}"
+  fi
+fi
+say "  - install Python deps and start the dictation service ${c_dim}(no sudo)${c_off}"
+[ -n "$MISSING" ] && say "  - install system packages with ${PM:-your package manager}: ${c_ok}$MISSING${c_off} ${c_dim}(sudo)${c_off}"
+say "  - set up the ydotoold input service ${c_dim}(sudo)${c_off}"
+say "  - bind Super+\\ to dictation on GNOME/Sway/Hyprland (KDE: one manual step, shown after)"
+say ""
+
 DO_PRIV="no"
 if [ "$ASSUME_DEFAULTS" = 0 ]; then
-  PROMPT="Set up the ydotoold service"
-  [ -n "$MISSING" ] && PROMPT="Install missing packages ($MISSING) and set up ydotoold"
-  DO_PRIV="$(ask "$PROMPT now? (one sudo prompt) (yes/no)" "yes")"
+  ans="$(ask "Continue? This runs the sudo steps above (one password prompt). [Y/n]" "Y")"
+  case "${ans,,}" in n|no) DO_PRIV="no" ;; *) DO_PRIV="yes" ;; esac
+else
+  say "${c_dim}non-interactive run: doing user-level setup only and printing the sudo steps.${c_off}"
 fi
 
 # ---- write config ---------------------------------------------------------
