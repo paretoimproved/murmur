@@ -312,10 +312,21 @@ def record_session():
         return
 
     audio = np.concatenate(chunks) if chunks else np.zeros(0, dtype=np.float32)
-    # No trailing-silence trim. It cut the quiet ends of sentences (words that
-    # drop below the voice threshold as you trail off). vad_filter and
-    # hallucination_silence_threshold at transcribe time handle the silent tail
-    # without chopping real speech.
+    # Trim only genuine trailing dead air (so Whisper can't hallucinate on it),
+    # scanning the actual audio from the end with a floor WELL BELOW the speech
+    # threshold. Quiet sentence endings sit above the floor and are kept; this is
+    # the opposite of the old trim, which cut them.
+    if audio.size:
+        floor = SILENCE_RMS * 0.4
+        win = int(0.03 * RATE)
+        i = audio.size
+        while i - win > 0:
+            if float(np.sqrt(np.mean(audio[i - win:i] ** 2))) >= floor:
+                break
+            i -= win
+        keep = min(audio.size, i + int(0.3 * RATE))   # short pad for the last word's release
+        if 0 < keep < audio.size:
+            audio = audio[:keep]
     if audio.size < int(MIN_SECONDS * RATE):
         notify("…nothing heard", "vd-state")
         _maybe_submit()
