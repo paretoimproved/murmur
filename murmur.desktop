@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Murmur
+GenericName=Voice Dictation
+Comment=Local, private voice dictation
+Exec=__MURMUR_DIR__/murmur gui
+Icon=audio-input-microphone
+Terminal=false
+Categories=Utility;AudioVideo;Accessibility;
+Keywords=dictation;speech;voice;transcribe;whisper;

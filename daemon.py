@@ -352,6 +352,10 @@ class Handler(socketserver.StreamRequestHandler):
             self.wfile.write((submit() + "\n").encode())
         elif cmd == "ping":
             self.wfile.write(b"pong\n")
+        elif cmd == "status":
+            with _lock:
+                st = "recording" if _recording else "idle"
+            self.wfile.write((st + "\n").encode())
         else:
             self.wfile.write(b"unknown\n")
 

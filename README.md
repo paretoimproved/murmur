@@ -51,6 +51,18 @@ A few honest edges: `uv` and Ollama are prerequisites you install yourself (Murm
 
 **Unusual distro or a setup the wizard doesn't cover?** See [SETUP_WITH_AI.md](SETUP_WITH_AI.md) to hand the install to a coding agent that adapts to your exact machine.
 
+## Desktop app (tray + settings)
+
+Prefer not to live in the terminal? Run:
+
+```bash
+murmur gui
+```
+
+or launch **Murmur** from your application menu. You get a system-tray icon (click to start or stop dictation, with a live status light), a settings window for the model and cleanup options, and a first-run installer that handles the privileged setup through a graphical password prompt (polkit) instead of `sudo`. This is the no-terminal way to use Murmur day to day.
+
+The GUI needs a system tray (works on KDE and most desktops; GNOME needs an AppIndicator extension). It's newer than the CLI, so if anything looks off, the CLI (`murmur`, `./setup`, `./doctor`) is always there as the fallback.
+
 ## Usage
 
 **Dictate:** focus a text field, press your shortcut, speak (pause to think as long as you want, it records through silence), press it again. The text types into the focused window.

@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Run as root via pkexec by the Murmur GUI. Installs missing system packages and
+# the ydotoold input service. Args: UID GID PM [package ...]
+set -euo pipefail
+UID_N="${1:?uid}"; GID_N="${2:?gid}"; PM="${3:?pm}"; shift 3
+PKGS=("$@")
+
+if [ "${#PKGS[@]}" -gt 0 ] && [ "$PM" != "none" ]; then
+  case "$PM" in
+    dnf)    dnf install -y "${PKGS[@]}" ;;
+    apt)    apt-get update -qq && apt-get install -y "${PKGS[@]}" ;;
+    pacman) pacman -S --noconfirm --needed "${PKGS[@]}" ;;
+    zypper) zypper --non-interactive install "${PKGS[@]}" ;;
+    *)      echo "unknown package manager: $PM" >&2 ;;
+  esac
+fi
+
+YB="$(command -v ydotoold || echo /usr/bin/ydotoold)"
+cat > /etc/systemd/system/ydotoold.service <<UNIT
+[Unit]
+Description=ydotool daemon (uinput) for Murmur
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=$YB --socket-path=/run/ydotoold.socket --socket-own=$UID_N:$GID_N
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now ydotoold.service
+echo "privileged setup complete"

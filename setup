@@ -261,6 +261,11 @@ mkdir -p "$BIN_DIR"
 ln -sf "$DIR/murmur" "$BIN_DIR/murmur"
 PATH_NOTE=""
 case ":$PATH:" in *":$BIN_DIR:"*) ;; *) PATH_NOTE="   ${c_dim}(add $BIN_DIR to PATH to run it from anywhere)${c_off}" ;; esac
+# app-menu entry for the graphical app
+APP_DIR="$HOME/.local/share/applications"
+mkdir -p "$APP_DIR"
+sed "s#__MURMUR_DIR__#$DIR#g" "$DIR/murmur.desktop" > "$APP_DIR/murmur.desktop"
+chmod +x "$DIR/bin/murmur-privileged-setup" "$DIR/gui.py" 2>/dev/null || true
 
 # ---- health check ----------------------------------------------------------
 if [ -x "$DIR/doctor" ]; then say ""; say "Running health check..."; say ""; "$DIR/doctor" || true; fi
@@ -296,5 +301,8 @@ fi
 say ""
 say "${c_ok}Run 'murmur' anytime${c_off} for status and everything you can do${PATH_NOTE}:"
 say "  ${c_ok}murmur${c_off} (help) · ${c_ok}murmur config${c_off} · ${c_ok}murmur doctor${c_off} · ${c_ok}murmur logs${c_off} · ${c_ok}murmur restart${c_off}"
+say ""
+say "${c_ok}Prefer a graphical app?${c_off} Run ${c_ok}murmur gui${c_off} (or open ${c_ok}Murmur${c_off} from your app menu):"
+say "  a tray icon to click, a settings window, no terminal needed for daily use."
 say "${c_dim}Optional extras (see README): mouse-flick trigger, auto-pause while gaming.${c_off}"
 say ""

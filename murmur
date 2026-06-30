@@ -10,6 +10,7 @@ case "${1:-help}" in
   toggle)  exec "$DIR/dictation-toggle" ;;
   doctor)  exec "$DIR/doctor" ;;
   setup)   exec "$DIR/setup" "${@:2}" ;;
+  gui)     cd "$DIR" && exec uv run --extra gui python gui.py "${@:2}" ;;
   config)  exec "${EDITOR:-nano}" "$CONFIG" ;;
   logs)    exec journalctl --user -u murmur.service -f ;;
   start|stop|restart|status) exec systemctl --user "$1" murmur.service ;;
@@ -18,6 +19,7 @@ case "${1:-help}" in
     printf "${g}Murmur${o}  (dictation service: %s)\n\n" "$state"
     printf "To dictate: click into a text field, press your shortcut, speak, press again.\n\n"
     printf "Commands:\n"
+    printf "  ${g}murmur gui${o}       open the tray app + settings (graphical)\n"
     printf "  ${g}murmur toggle${o}    start/stop dictation now (types into the focused window)\n"
     printf "  ${g}murmur config${o}    edit settings: model, cleanup on/off, etc.\n"
     printf "  ${g}murmur doctor${o}    health check, with the fix for anything missing\n"
