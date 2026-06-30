@@ -5,7 +5,13 @@ requires-python = ">=3.12"
 dependencies = [
     "faster-whisper>=1.2.1",
     "numpy>=2.5.0",
+    "sounddevice>=0.4.7",
+]
+
+[project.optional-dependencies]
+# CUDA runtime libs for NVIDIA GPUs. `./setup` installs these only when an
+# NVIDIA GPU is detected (uv sync --extra gpu). CPU/AMD/ARM installs skip them.
+gpu = [
     "nvidia-cublas-cu12>=12.9.2.10",
     "nvidia-cudnn-cu12>=9.23.2.1",
-    "soundfile>=0.14.0",
 ]

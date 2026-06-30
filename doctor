@@ -21,7 +21,8 @@ printf "${d}Murmur doctor  (dir: $DIR)${o}\n\n"
 
 # --- core dependencies ---
 have uv        && ok "uv present"        || bad "uv not found"        "install uv: https://docs.astral.sh/uv/"
-have pw-record && ok "PipeWire (pw-record)" || bad "pw-record not found" "install pipewire / pipewire-utils for your distro"
+if ldconfig -p 2>/dev/null | grep -qi portaudio; then ok "PortAudio audio backend (works with PipeWire/PulseAudio/ALSA/JACK)"
+else bad "PortAudio not found" "install it: Fedora 'sudo dnf install portaudio', Debian/Ubuntu 'sudo apt install libportaudio2', Arch 'sudo pacman -S portaudio'"; fi
 have ydotool   && ok "ydotool present"   || bad "ydotool not found"   "install ydotool (and run ydotoold; see README)"
 
 # --- python env synced ---

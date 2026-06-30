@@ -18,6 +18,7 @@ import sys
 import urllib.request
 
 import numpy as np
+import sounddevice as sd
 from faster_whisper import WhisperModel
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -72,7 +73,6 @@ LANGUAGE = cfg("lang", "en")
 BEAM = cfg("beam", 1, int)
 
 RATE = 16000
-CHUNK = 4096                      # bytes per read (~0.128 s of s16 mono)
 SILENCE_RMS = cfg("silence_rms", 0.012, float)
 # >0 = auto-stop after N seconds of quiet; 0 = manual stop only (flick left to end)
 SILENCE_HANG = cfg("silence_hang", 0.0, float)
@@ -245,46 +245,43 @@ def _maybe_submit():
 def record_session():
     """Capture audio with live VAD auto-stop, then transcribe and inject."""
     global _recording
-    proc = subprocess.Popen(
-        ["pw-record", "--rate", str(RATE), "--channels", "1",
-         "--format", "s16", "--raw", "-"],
-        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-    )
-    buf = bytearray()
+    chunks = []                       # float32 mono blocks
     start = time.monotonic()
     last_voice = None
     speech = False
+    block = max(256, RATE // 8)       # ~0.125 s per read
     notify("\U0001F3A4  Listening…", "vd-state")
     try:
-        while True:
-            if _stop_event.is_set():
-                break
-            b = proc.stdout.read(CHUNK)
-            if not b:
-                break
-            buf.extend(b)
-            a = np.frombuffer(b, dtype=np.int16).astype(np.float32) / 32768.0
-            rms = float(np.sqrt(np.mean(a * a))) if a.size else 0.0
-            now = time.monotonic()
-            if rms >= SILENCE_RMS:
-                speech = True
-                last_voice = now
-            if (SILENCE_HANG > 0 and speech and last_voice
-                    and (now - last_voice) >= SILENCE_HANG):
-                break
-            if not speech and (now - start) >= NO_SPEECH_TIMEOUT:
-                buf = bytearray()
-                break
-            if (now - start) >= MAX_SECONDS:
-                break
-    finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        # PortAudio backend: works across PipeWire, PulseAudio, ALSA and JACK,
+        # so capture is not tied to any one Linux audio stack.
+        with sd.InputStream(samplerate=RATE, channels=1, dtype="float32",
+                            blocksize=block) as stream:
+            while True:
+                if _stop_event.is_set():
+                    break
+                data, _ = stream.read(block)
+                a = data[:, 0]
+                chunks.append(a.copy())
+                rms = float(np.sqrt(np.mean(a * a))) if a.size else 0.0
+                now = time.monotonic()
+                if rms >= SILENCE_RMS:
+                    speech = True
+                    last_voice = now
+                if (SILENCE_HANG > 0 and speech and last_voice
+                        and (now - last_voice) >= SILENCE_HANG):
+                    break
+                if not speech and (now - start) >= NO_SPEECH_TIMEOUT:
+                    chunks = []
+                    break
+                if (now - start) >= MAX_SECONDS:
+                    break
+    except Exception as e:
+        log(f"audio capture failed: {e}")
+        notify("…audio capture error (is an input device available?)", "vd-state")
+        _finish()
+        return
 
-    audio = np.frombuffer(bytes(buf), dtype=np.int16).astype(np.float32) / 32768.0
+    audio = np.concatenate(chunks) if chunks else np.zeros(0, dtype=np.float32)
     # Trim the trailing silence between the last detected speech and the manual
     # stop-flick. That silent tail is where Whisper hallucinates (it regurgitates
     # the vocab prompt and loops). Keep a short pad so soft word endings survive.

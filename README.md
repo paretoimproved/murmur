@@ -13,11 +13,11 @@ Murmur is a Linux alternative to tools like Wispr Flow. The thing that makes tho
 ## How it works
 
 ```
-mic ──pw-record──▶ faster-whisper (resident in VRAM) ──▶ local LLM cleanup (Ollama)
-                                                              │
-                                              deterministic corrections.txt
-                                                              │
-                                                         ydotool types it
+mic --PortAudio--> faster-whisper (resident) --> local LLM cleanup (Ollama)
+                                                       |
+                                       deterministic corrections.txt
+                                                       |
+                                                  ydotool types it
 ```
 
 - `daemon.py` keeps the Whisper model resident on a unix socket, records via PipeWire, trims trailing silence, transcribes, optionally cleans up via Ollama, then types via `ydotool`.
@@ -27,10 +27,11 @@ mic ──pw-record──▶ faster-whisper (resident in VRAM) ──▶ local L
 
 ## Requirements
 
-- Linux with PipeWire (`pw-record`) and a Wayland or X11 session. Text injection uses [`ydotool`](https://github.com/ReimuNotMoe/ydotool).
-- An NVIDIA GPU is strongly recommended (the default model is `large-v3-turbo` in float16). CPU works but is slower; pick a smaller `VD_MODEL`.
-- [`uv`](https://docs.astral.sh/uv/) for Python dependency management.
-- [Ollama](https://ollama.com/) for the cleanup pass (optional; set `VD_CLEANUP=0` to skip it).
+- A microphone. Audio goes through PortAudio, so any backend works (PipeWire, PulseAudio, ALSA, JACK). Install the PortAudio system library: `portaudio` (Fedora/Arch) or `libportaudio2` (Debian/Ubuntu).
+- A Wayland or X11 session. Text injection uses [`ydotool`](https://github.com/ReimuNotMoe/ydotool) (required on Wayland; works on X11 too).
+- An NVIDIA GPU gives the best speed, and `./setup` installs the CUDA libs only then. CPU and AMD work too, just slower; `./setup` auto-picks `small.en` on those.
+- [`uv`](https://docs.astral.sh/uv/) for Python dependencies.
+- [Ollama](https://ollama.com/) for the cleanup pass (optional; set `cleanup = false` in config to skip it).
 
 ## Install
 
@@ -98,7 +99,7 @@ KDE/Wayland can't bind mouse-wheel events to shortcuts, so `mouse-trigger.py` re
 
 ## GPU notes (CUDA / Blackwell)
 
-ctranslate2 (faster-whisper's backend) needs the CUDA 12 runtime libraries. The pip packages `nvidia-cublas-cu12` and `nvidia-cudnn-cu12` are pinned as dependencies, and `run-daemon.sh` puts them on `LD_LIBRARY_PATH` at launch (the `nvidia` namespace package has no `__file__`, so it resolves via `__path__`). Blackwell / sm_120 GPUs (e.g. RTX 50-series) work on ctranslate2 4.8+.
+GPU acceleration uses ctranslate2 (faster-whisper's backend), which needs the CUDA 12 runtime libraries. Those (`nvidia-cublas-cu12`, `nvidia-cudnn-cu12`) live in an optional `gpu` extra in `pyproject.toml`; `./setup` installs them only when it detects an NVIDIA GPU (`uv sync --extra gpu`), so CPU, AMD, and ARM installs stay lean. On NVIDIA, `run-daemon.sh` puts those libs on `LD_LIBRARY_PATH` at launch (resolved via the `nvidia` namespace package's `__path__`); on other machines that step is a no-op. Blackwell / sm_120 GPUs (e.g. RTX 50-series) work on ctranslate2 4.8+.
 
 ## License
 

@@ -36,9 +36,14 @@ say "Detected:"
 say "  distro:   $DISTRO"
 say "  session:  $SESSION"
 say "  gpu:      $GPU"
-for t in uv pw-record ydotool ollama; do
+for t in uv ydotool ollama; do
   if have "$t"; then say "  ${c_ok}\xe2\x9c\x93${c_off} $t"; else say "  ${c_warn}\xe2\x9c\x97${c_off} $t (missing)"; fi
 done
+if ldconfig -p 2>/dev/null | grep -qi portaudio; then
+  say "  ${c_ok}\xe2\x9c\x93${c_off} portaudio (audio backend)"
+else
+  say "  ${c_warn}\xe2\x9c\x97${c_off} portaudio (install your distro's portaudio / libportaudio2)"
+fi
 say ""
 
 have uv || { say "${c_err}'uv' is required.${c_off} Install: https://docs.astral.sh/uv/  then re-run ./setup"; exit 1; }
@@ -69,8 +74,14 @@ fi
 say "${c_dim}edit your terms in $CONFIG_DIR/vocab.txt and corrections.txt${c_off}"
 
 # ---- deps + service --------------------------------------------------------
-say ""; say "Syncing Python deps (uv sync)..."
-( cd "$DIR" && uv sync )
+say ""
+if [ "$HAS_GPU" = 1 ]; then
+  say "Syncing Python deps with NVIDIA GPU support (uv sync --extra gpu)..."
+  ( cd "$DIR" && uv sync --extra gpu )
+else
+  say "Syncing Python deps (uv sync, CPU)..."
+  ( cd "$DIR" && uv sync )
+fi
 
 mkdir -p "$UNIT_DIR"
 for u in murmur.service murmur-gamewatch.service; do
