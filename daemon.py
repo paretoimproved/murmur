@@ -8,6 +8,7 @@ on the GPU, and types the text into the focused window via ydotool.
 """
 import json
 import os
+import queue
 import re
 import socket
 import socketserver
@@ -256,29 +257,43 @@ def record_session():
     except Exception as e:
         log(f"could not resolve input device: {e}")
     notify("\U0001F3A4  Listening…", "vd-state")
+    q = queue.Queue()
+
+    def _cb(indata, frames, time_info, status):
+        q.put(indata[:, 0].copy())
+
+    got_audio = False
     try:
-        # PortAudio backend: works across PipeWire, PulseAudio, ALSA and JACK,
-        # so capture is not tied to any one Linux audio stack.
+        # Callback + queue: pull audio off a queue and check the stop signal on a
+        # ~0.1s timer, so stopping works even if the device delivers no frames (a
+        # stalled mic must never wedge the loop). Works across PipeWire/Pulse/ALSA/JACK.
         with sd.InputStream(samplerate=RATE, channels=1, dtype="float32",
-                            blocksize=block) as stream:
+                            blocksize=block, callback=_cb):
             while True:
                 if _stop_event.is_set():
                     break
-                data, _ = stream.read(block)
-                a = data[:, 0]
-                chunks.append(a.copy())
-                rms = float(np.sqrt(np.mean(a * a))) if a.size else 0.0
                 now = time.monotonic()
+                if (now - start) >= MAX_SECONDS:
+                    break
+                if not got_audio and (now - start) >= 5.0:
+                    log("no audio from the input device after 5s; aborting")
+                    notify("…no audio from the mic (check your input device)", "vd-state")
+                    break
+                if not speech and (now - start) >= NO_SPEECH_TIMEOUT:
+                    chunks = []
+                    break
+                try:
+                    a = q.get(timeout=0.1)
+                except queue.Empty:
+                    continue
+                got_audio = True
+                chunks.append(a)
+                rms = float(np.sqrt(np.mean(a * a))) if a.size else 0.0
                 if rms >= SILENCE_RMS:
                     speech = True
                     last_voice = now
                 if (SILENCE_HANG > 0 and speech and last_voice
                         and (now - last_voice) >= SILENCE_HANG):
-                    break
-                if not speech and (now - start) >= NO_SPEECH_TIMEOUT:
-                    chunks = []
-                    break
-                if (now - start) >= MAX_SECONDS:
                     break
     except Exception as e:
         log(f"audio capture failed: {e}")
